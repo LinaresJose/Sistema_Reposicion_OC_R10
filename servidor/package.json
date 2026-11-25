@@ -1,0 +1,35 @@
+{
+  "name": "servidor-reposicion-oc",
+  "version": "1.0.0",
+  "description": "API Backend para el Sistema Multi-Usuario de Reposición y Órdenes de Compra",
+  "private": true,
+  "main": "dist/infraestructura/servidor.js",
+  "scripts": {
+    "compilar": "tsc",
+    "build": "tsc",
+    "iniciar": "node dist/infraestructura/servidor.js",
+    "dev": "tsx watch src/infraestructura/servidor.ts",
+    "desarrollo": "tsx watch src/infraestructura/servidor.ts",
+    "probar": "tsx test/probar-autenticacion.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/jwt": "^9.0.4",
+    "@fastify/multipart": "^10.1.9",
+    "@resvg/resvg-js": "^2.6.2",
+    "argon2": "^0.41.1",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.2.1",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.13.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
