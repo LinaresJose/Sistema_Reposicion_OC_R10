@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   UploadCloud, 
   FileSpreadsheet, 
@@ -6,7 +6,8 @@ import {
   Clock, 
   RefreshCw, 
   FileCheck, 
-  XCircle 
+  XCircle,
+  FolderOpen
 } from 'lucide-react';
 import { servicioCargasOdoo, ResultadoProcesamientoCarga } from '../servicios/servicio-cargas-odoo.js';
 import { RegistroCargaOdoo, HallazgoArchivo } from '../tipos/carga-odoo.js';
@@ -24,6 +25,7 @@ export const VistaCargasOdoo: React.FC = () => {
   const [errorGlobal, setErrorGlobal] = useState<string | null>(null);
   const [historial, setHistorial] = useState<RegistroCargaOdoo[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState<boolean>(true);
+  const inputLoteRef = useRef<HTMLInputElement>(null);
 
   const cargarHistorial = async () => {
     setCargandoHistorial(true);
@@ -41,9 +43,43 @@ export const VistaCargasOdoo: React.FC = () => {
     cargarHistorial();
   }, []);
 
+  // ── Autodeteccion de archivos por nombre de archivo ──────────────────────
+  const detectarCampo = (nombre: string): keyof typeof archivos | null => {
+    const n = nombre.toLowerCase();
+    if (n.includes('product.template') || n.includes('plantilla_de_producto') || n.includes('catalogo') || n.includes('product_template')) return 'catalogoCostos';
+    if (n.includes('stock') || n.includes('inventario') || n.includes('quant')) return 'inventarioMano';
+    if (n.includes('purchase') || n.includes('compra')) return 'comprasTransito';
+    if (n.includes('sale') || n.includes('venta') || n.includes('multi.price') || n.includes('precio')) return 'historialVentasPrecios';
+    return null;
+  };
+
+  // ── Selector individual por tarjeta ─────────────────────────────────────
   const manejarSeleccionArchivo = (campo: keyof typeof archivos, e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setArchivos((prev) => ({ ...prev, [campo]: e.target.files![0] }));
+    }
+  };
+
+  // ── Selector multiple de los 4 archivos en un clic ──────────────────────
+  const manejarSeleccionLote = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const nuevosArchivos: typeof archivos = { ...archivos };
+    const noReconocidos: string[] = [];
+
+    Array.from(e.target.files).forEach((archivo) => {
+      const campo = detectarCampo(archivo.name);
+      if (campo) {
+        nuevosArchivos[campo] = archivo;
+      } else {
+        noReconocidos.push(archivo.name);
+      }
+    });
+
+    setArchivos(nuevosArchivos);
+    if (noReconocidos.length > 0) {
+      setErrorGlobal(`Archivo(s) no reconocido(s) por nombre: ${noReconocidos.join(', ')}. Asignelo manualmente con el boton correspondiente.`);
+    } else {
+      setErrorGlobal(null);
     }
   };
 
@@ -64,7 +100,13 @@ export const VistaCargasOdoo: React.FC = () => {
       setResultado(resp);
       await cargarHistorial();
     } catch (err: any) {
+      // Mostrar el mensaje detallado del backend (422 con hallazgos fila x fila)
       setErrorGlobal(err.message || 'Error al procesar archivos de Odoo');
+      // Si el error trae datos de hallazgos, mostrarlos como resultado parcial
+      if (err.detalles?.hallazgos || err.detalles?.datos?.hallazgos) {
+        const datosError = err.detalles?.datos || err.detalles;
+        setResultado(datosError as ResultadoProcesamientoCarga);
+      }
     } finally {
       setProcesando(false);
     }
@@ -112,6 +154,27 @@ export const VistaCargasOdoo: React.FC = () => {
 
       {/* Formulario de Carga */}
       <form onSubmit={manejarProcesar} className="bg-white rounded-xl shadow-xs border border-slate-200 p-6 space-y-6">
+
+        {/* Selector en lote — los 4 archivos de una sola vez */}
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-sky-50 border border-sky-200">
+          <FolderOpen className="w-5 h-5 text-sky-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-sky-900">Cargar los 4 archivos de una sola vez</p>
+            <p className="text-[11px] text-sky-700 mt-0.5">El sistema los reconoce automaticamente por nombre de archivo (product.template, purchase.order, sale.order, multi.price).</p>
+          </div>
+          <label className="shrink-0 cursor-pointer px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700 transition-colors">
+            Seleccionar 4 archivos
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              multiple
+              className="hidden"
+              onChange={manejarSeleccionLote}
+              ref={inputLoteRef}
+            />
+          </label>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {configuracionArchivos.map((cfg) => (
             <div

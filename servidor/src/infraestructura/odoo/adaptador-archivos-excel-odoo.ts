@@ -135,24 +135,35 @@ export class AdaptadorArchivosExcelOdoo implements PuertoOrigenDatosOdoo {
       if (numeroFila === 1) return; // Encabezado
       total++;
 
-      const sku = this.obtenerValorTexto(fila, mapaColumnas, ['default_code', 'codigo_sku', 'sku', 'referencia_interna', 'referencia', 'codigo']);
+      // Columnas reales Odoo: "Referencia interna", "Nombre", "Brand/Name", "Codigo de Proveedor",
+      //   "Ultimo costo", "Cantidad a mano", "Empaque Original", "Bulto Original", "Precio de venta"
+      const sku = this.obtenerValorTexto(fila, mapaColumnas, [
+        'referencia_interna', 'default_code', 'codigo_sku', 'sku', 'referencia', 'codigo'
+      ]);
       if (!sku) {
-        hallazgos.push({ fila: numeroFila, archivo: 'catalogo_costos', columna: 'codigo_sku', valor: null, mensajeError: 'Codigo SKU requerido y no puede ser vacio' });
+        // Fila completamente vacia al final del archivo — ignorar silenciosamente
+        const tieneDatos = fila.values && (fila.values as any[]).some((v: any) => v !== null && v !== undefined && v !== '');
+        if (tieneDatos) {
+          hallazgos.push({ fila: numeroFila, archivo: 'catalogo_costos', columna: 'referencia_interna', valor: null, mensajeError: 'Codigo SKU requerido y no puede ser vacio' });
+        } else { total--; }
         return;
       }
 
-      const descripcion = this.obtenerValorTexto(fila, mapaColumnas, ['name', 'descripcion_producto', 'descripcion', 'producto']) || sku;
-      const proveedor = this.obtenerValorTexto(fila, mapaColumnas, ['nombre_proveedor', 'proveedor', 'vendedor', 'partner_id']) || 'SIN PROVEEDOR ASIGNADO';
-      const marca = this.obtenerValorTexto(fila, mapaColumnas, ['marca']) || '';
+      const descripcion = this.obtenerValorTexto(fila, mapaColumnas, ['nombre', 'name', 'descripcion_producto', 'descripcion', 'producto']) || sku;
+      const marca = this.obtenerValorTexto(fila, mapaColumnas, ['brand_name', 'marca', 'brand']) || '';
+      const codigoProveedorOdoo = this.obtenerValorTexto(fila, mapaColumnas, ['codigo_de_proveedor', 'codigo_proveedor', 'proveedor_code', 'partner_ref']) || null;
       const codigoBarras = this.obtenerValorTexto(fila, mapaColumnas, ['barcode', 'codigo_barras', 'codigo_barra']) || null;
 
-      const costoUSD = this.obtenerValorNumerico(fila, mapaColumnas, ['standard_price', 'costo_unitario_usd', 'costo', 'cost']);
+      // "Ultimo costo" -> costoUSD
+      const costoUSD = this.obtenerValorNumerico(fila, mapaColumnas, ['ultimo_costo', 'standard_price', 'costo_unitario_usd', 'costo', 'cost']);
       if (costoUSD === null || costoUSD < 0) {
-        hallazgos.push({ fila: numeroFila, archivo: 'catalogo_costos', columna: 'costo_unitario_usd', valor: costoUSD, mensajeError: 'Costo unitario USD debe ser un numero mayor o igual a 0' });
+        hallazgos.push({ fila: numeroFila, archivo: 'catalogo_costos', columna: 'ultimo_costo', valor: costoUSD, mensajeError: 'Costo unitario USD debe ser un numero mayor o igual a 0' });
       }
 
-      const precioUSD = this.obtenerValorNumerico(fila, mapaColumnas, ['list_price', 'precio_venta_usd', 'precio', 'price', 'price_unit', 'precio_venta']) || 0;
-      const empaque = Math.max(1, Math.round(this.obtenerValorNumerico(fila, mapaColumnas, ['uom_po_id', 'unidad_minima_empaque', 'empaque', 'unidad_empaque', 'uom']) || 1));
+      // "Precio de venta" -> precioUSD
+      const precioUSD = this.obtenerValorNumerico(fila, mapaColumnas, ['precio_de_venta', 'list_price', 'precio_venta_usd', 'precio', 'price', 'price_unit', 'precio_venta']) || 0;
+      // "Empaque Original" -> empaque
+      const empaque = Math.max(1, Math.round(this.obtenerValorNumerico(fila, mapaColumnas, ['empaque_original', 'uom_po_id', 'unidad_minima_empaque', 'empaque', 'unidad_empaque', 'uom', 'bulto_original']) || 1));
 
       const clasifTexto = (this.obtenerValorTexto(fila, mapaColumnas, ['clasificacion_comercial', 'clasificacion', 'clase']) || 'MEDIA ROTACION').toUpperCase();
       let clasificacion: 'ALTA ROTACION' | 'MEDIA ROTACION' | 'COMPLEMENTO' = 'MEDIA ROTACION';
@@ -167,7 +178,7 @@ export class AdaptadorArchivosExcelOdoo implements PuertoOrigenDatosOdoo {
           codigoSKU: sku,
           codigoBarras,
           descripcionProducto: descripcion,
-          nombreProveedor: proveedor,
+          nombreProveedor: codigoProveedorOdoo || 'SIN PROVEEDOR ASIGNADO',
           marca,
           costoUnitarioUSD: costoUSD,
           precioVentaUSD: Math.max(0, precioUSD),
@@ -201,13 +212,18 @@ export class AdaptadorArchivosExcelOdoo implements PuertoOrigenDatosOdoo {
       if (numeroFila === 1) return;
       total++;
 
-      const sku = this.obtenerValorTexto(fila, mapaColumnas, ['default_code', 'codigo_sku', 'sku', 'referencia_interna', 'referencia']);
+      // Columnas reales: "Referencia interna", "Cantidad a mano"
+      const sku = this.obtenerValorTexto(fila, mapaColumnas, ['referencia_interna', 'default_code', 'codigo_sku', 'sku', 'referencia']);
       if (!sku) {
-        hallazgos.push({ fila: numeroFila, archivo: 'inventario_mano', columna: 'codigo_sku', valor: null, mensajeError: 'Codigo SKU requerido' });
+        const tieneDatos = fila.values && (fila.values as any[]).some((v: any) => v !== null && v !== undefined && v !== '');
+        if (tieneDatos) {
+          hallazgos.push({ fila: numeroFila, archivo: 'inventario_mano', columna: 'referencia_interna', valor: null, mensajeError: 'Codigo SKU requerido' });
+        } else { total--; }
         return;
       }
 
-      const cantidad = this.obtenerValorNumerico(fila, mapaColumnas, ['qty_available', 'cantidad_a_mano', 'stock', 'cantidad', 'a_mano', 'disponible']);
+      // "Cantidad a mano" column en product.template tambien tiene la col
+      const cantidad = this.obtenerValorNumerico(fila, mapaColumnas, ['cantidad_a_mano', 'qty_available', 'stock', 'cantidad', 'a_mano', 'disponible']);
       if (cantidad === null || cantidad < 0) {
         hallazgos.push({ fila: numeroFila, archivo: 'inventario_mano', columna: 'cantidad_a_mano', valor: cantidad, mensajeError: 'Cantidad a mano debe ser mayor o igual a 0' });
         return;
@@ -240,21 +256,46 @@ export class AdaptadorArchivosExcelOdoo implements PuertoOrigenDatosOdoo {
       if (numeroFila === 1) return;
       total++;
 
-      const sku = this.obtenerValorTexto(fila, mapaColumnas, ['default_code', 'codigo_sku', 'sku', 'referencia_interna']);
+      // Columnas reales Odoo purchase.order:
+      //   "Lineas del pedido/Producto/Referencia interna"
+      //   "Lineas del pedido/Cantidad"
+      //   "Lineas del pedido/Referencia del pedido/Proveedor"
+      //   "Lineas del pedido/Fecha de entrega"
+      const sku = this.obtenerValorTexto(fila, mapaColumnas, [
+        'lineas_del_pedido_producto_referencia_interna',
+        'default_code', 'codigo_sku', 'sku', 'referencia_interna'
+      ]);
       if (!sku) {
-        hallazgos.push({ fila: numeroFila, archivo: 'compras_transito', columna: 'codigo_sku', valor: null, mensajeError: 'Codigo SKU requerido' });
+        const tieneDatos = fila.values && (fila.values as any[]).some((v: any) => v !== null && v !== undefined && v !== '');
+        if (tieneDatos) {
+          hallazgos.push({ fila: numeroFila, archivo: 'compras_transito', columna: 'referencia_interna', valor: null, mensajeError: 'Codigo SKU requerido' });
+        } else { total--; }
         return;
       }
 
-      const orden = this.obtenerValorTexto(fila, mapaColumnas, ['name', 'numero_orden_compra', 'orden_compra', 'pedido', 'oc']) || 'OC-SIN-NUMERO';
-      const cantidad = this.obtenerValorNumerico(fila, mapaColumnas, ['product_qty', 'cantidad_transito', 'cantidad', 'pedida']);
+      // Numero de orden: no hay col directa; usar referencia del pedido/proveedor como contexto
+      const orden = this.obtenerValorTexto(fila, mapaColumnas, [
+        'name', 'numero_orden_compra', 'orden_compra', 'pedido', 'oc'
+      ]) || 'OC-SIN-NUMERO';
+
+      // "Lineas del pedido/Cantidad"
+      const cantidad = this.obtenerValorNumerico(fila, mapaColumnas, [
+        'lineas_del_pedido_cantidad', 'product_qty', 'cantidad_transito', 'cantidad', 'pedida'
+      ]);
       if (cantidad === null || cantidad <= 0) {
-        hallazgos.push({ fila: numeroFila, archivo: 'compras_transito', columna: 'cantidad_transito', valor: cantidad, mensajeError: 'Cantidad en transito debe ser mayor a 0' });
+        // Silenciar filas con cantidad 0 (ya recibidas/facturadas)
+        total--;
         return;
       }
 
-      const fechaPrevista = this.obtenerValorFecha(fila, mapaColumnas, ['date_planned', 'fecha_llegada_prevista', 'fecha_prevista', 'eta', 'fecha']);
-      const proveedor = this.obtenerValorTexto(fila, mapaColumnas, ['proveedor']) || null;
+      // "Lineas del pedido/Fecha de entrega"
+      const fechaPrevista = this.obtenerValorFecha(fila, mapaColumnas, [
+        'lineas_del_pedido_fecha_de_entrega', 'date_planned', 'fecha_llegada_prevista', 'fecha_prevista', 'eta', 'fecha'
+      ]);
+      // "Lineas del pedido/Referencia del pedido/Proveedor"
+      const proveedor = this.obtenerValorTexto(fila, mapaColumnas, [
+        'lineas_del_pedido_referencia_del_pedido_proveedor', 'proveedor'
+      ]) || null;
 
       const item: FilaComprasTransito = {
         codigoSKU: sku,
@@ -292,27 +333,49 @@ export class AdaptadorArchivosExcelOdoo implements PuertoOrigenDatosOdoo {
       if (numeroFila === 1) return;
       total++;
 
-      const sku = this.obtenerValorTexto(fila, mapaColumnas, ['default_code', 'codigo_sku', 'sku', 'referencia_interna']);
+      // Columnas reales Odoo sale.order:
+      //   "Lineas del pedido/Producto/Referencia interna"
+      //   "Lineas del pedido/Cantidad"
+      //   "Lineas del pedido/Precio unitario"
+      //   "Lineas del pedido/Estado del pedido" (filtrar solo confirmados/done)
+      const sku = this.obtenerValorTexto(fila, mapaColumnas, [
+        'lineas_del_pedido_producto_referencia_interna',
+        'default_code', 'codigo_sku', 'sku', 'referencia_interna'
+      ]);
       if (!sku) {
-        hallazgos.push({ fila: numeroFila, archivo: 'historial_ventas_precios', columna: 'codigo_sku', valor: null, mensajeError: 'Codigo SKU requerido' });
+        const tieneDatos = fila.values && (fila.values as any[]).some((v: any) => v !== null && v !== undefined && v !== '');
+        if (tieneDatos) {
+          hallazgos.push({ fila: numeroFila, archivo: 'historial_ventas_precios', columna: 'referencia_interna', valor: null, mensajeError: 'Codigo SKU requerido' });
+        } else { total--; }
         return;
       }
 
-      const demanda = this.obtenerValorNumerico(fila, mapaColumnas, ['qty_sold', 'demanda_historica_mensual', 'ventas_mensuales', 'demanda', 'ventas']) || 0;
-      if (demanda < 0) {
-        hallazgos.push({ fila: numeroFila, archivo: 'historial_ventas_precios', columna: 'demanda_historica_mensual', valor: demanda, mensajeError: 'Demanda mensual no puede ser negativa' });
+      // Acumular demanda: "Lineas del pedido/Cantidad" (incluye borradores para proyeccion)
+      const cantidadFila = this.obtenerValorNumerico(fila, mapaColumnas, [
+        'lineas_del_pedido_cantidad', 'qty_sold', 'demanda_historica_mensual', 'ventas_mensuales', 'demanda', 'ventas', 'cantidad'
+      ]) || 0;
+      if (cantidadFila < 0) {
+        total--;
         return;
       }
 
-      const meta = this.obtenerValorNumerico(fila, mapaColumnas, ['meta_ventas_mensual', 'meta_ventas', 'meta', 'meta_mensual']) || demanda;
-      const precio = this.obtenerValorNumerico(fila, mapaColumnas, ['price_unit', 'precio_venta_vigente', 'precio_vigente', 'precio', 'price']) || 0;
+      const precio = this.obtenerValorNumerico(fila, mapaColumnas, [
+        'lineas_del_pedido_precio_unitario', 'price_unit', 'precio_venta_vigente', 'precio_vigente', 'precio', 'price'
+      ]) || 0;
 
-      filas.set(sku, {
-        codigoSKU: sku,
-        demandaHistoricaMensual: demanda,
-        metaVentasMensual: meta,
-        precioVentaVigente: precio
-      });
+      // Acumular por SKU (multiples lineas del mismo SKU)
+      const existente = filas.get(sku);
+      if (existente) {
+        existente.demandaHistoricaMensual += cantidadFila;
+        if (precio > existente.precioVentaVigente) existente.precioVentaVigente = precio;
+      } else {
+        filas.set(sku, {
+          codigoSKU: sku,
+          demandaHistoricaMensual: cantidadFila,
+          metaVentasMensual: cantidadFila,
+          precioVentaVigente: precio
+        });
+      }
     });
 
     return { filas, hallazgos, total };

@@ -37,7 +37,8 @@ export const servicioProveedores = {
 
   async autoasignarProveedor(identificadorProveedor: string): Promise<any> {
     return realizarPeticion(`/proveedores/${identificadorProveedor}/autoasignar`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({})
     });
   },
 

@@ -32,6 +32,7 @@ export class RepositorioPropuestasPg implements PuertoRepositorioPropuestas {
     const c = resCabecera.rows[0];
 
     // 2. Obtener los renglones de propuesta con calculo y decisiones
+    // LEFT JOIN para mostrar SKUs aunque aun no tengan calculo (antes de primera carga Odoo)
     const consultaRenglones = `
       SELECT 
         d.identificador_decision,
@@ -43,33 +44,35 @@ export class RepositorioPropuestasPg implements PuertoRepositorioPropuestas {
         ps.costo_unitario_usd,
         ps.precio_venta_usd,
         ps.unidad_minima_empaque,
-        c.cantidad_a_mano,
-        c.cantidad_transito_valido,
-        c.inventario_efectivo_disponible,
-        c.demanda_operativa_mensual,
-        c.dias_cobertura_actual,
-        c.cobertura_objetivo_dias,
-        c.umbral_compra_dias,
-        c.cantidad_sugerida_empaque AS cantidad_sugerida_motor,
-        c.inversion_sugerida_usd,
-        d.cantidad_ajuste_manual,
-        d.cantidad_final_propuesta,
-        (d.cantidad_final_propuesta * ps.costo_unitario_usd) AS inversion_final_usd,
+        COALESCE(c.cantidad_a_mano, 0) AS cantidad_a_mano,
+        COALESCE(c.cantidad_transito_valido, 0) AS cantidad_transito_valido,
+        COALESCE(c.inventario_efectivo_disponible, 0) AS inventario_efectivo_disponible,
+        COALESCE(c.demanda_operativa_mensual, 0) AS demanda_operativa_mensual,
+        COALESCE(c.dias_cobertura_actual, 0) AS dias_cobertura_actual,
+        COALESCE(c.cobertura_objetivo_dias, 0) AS cobertura_objetivo_dias,
+        COALESCE(c.umbral_compra_dias, 0) AS umbral_compra_dias,
+        COALESCE(c.cantidad_sugerida_empaque, 0) AS cantidad_sugerida_motor,
+        COALESCE(c.inversion_sugerida_usd, 0) AS inversion_sugerida_usd,
+        COALESCE(d.cantidad_ajuste_manual, 0) AS cantidad_ajuste_manual,
+        COALESCE(d.cantidad_final_propuesta, 0) AS cantidad_final_propuesta,
+        COALESCE(d.cantidad_final_propuesta, 0) * ps.costo_unitario_usd AS inversion_final_usd,
         d.justificacion_ajuste,
-        d.estado_decision,
-        c.diagnostico_urgencia,
-        c.es_apto_para_compra,
-        c.motivo_inaptitud,
+        COALESCE(d.estado_decision, 'SIN_CALCULO') AS estado_decision,
+        COALESCE(c.diagnostico_urgencia, 'SIN DATOS ODOO') AS diagnostico_urgencia,
+        COALESCE(c.es_apto_para_compra, FALSE) AS es_apto_para_compra,
+        COALESCE(c.motivo_inaptitud, 'Pendiente carga Odoo') AS motivo_inaptitud,
         c.hash_instantanea_calculo,
         d.hash_firma_aprobada,
-        (d.hash_firma_aprobada = c.hash_instantanea_calculo) AS es_calculo_vigente,
-        d.numero_version
+        CASE WHEN d.hash_firma_aprobada IS NOT NULL AND c.hash_instantanea_calculo IS NOT NULL
+             THEN (d.hash_firma_aprobada = c.hash_instantanea_calculo)
+             ELSE TRUE END AS es_calculo_vigente,
+        COALESCE(d.numero_version, 1) AS numero_version
       FROM producto_sku ps
-      INNER JOIN calculo_reposicion_sku c ON ps.identificador_producto = c.producto_id
-      INNER JOIN decision_compra_sku d ON c.identificador_calculo = d.calculo_id
+      LEFT JOIN calculo_reposicion_sku c ON ps.identificador_producto = c.producto_id
+      LEFT JOIN decision_compra_sku d ON c.identificador_calculo = d.calculo_id
       WHERE ps.proveedor_id = $1
       ORDER BY 
-        CASE c.diagnostico_urgencia
+        CASE COALESCE(c.diagnostico_urgencia, 'SIN DATOS ODOO')
           WHEN 'URGENTE' THEN 1
           WHEN 'COMPRAR AHORA' THEN 2
           WHEN 'EVALUAR MARGEN' THEN 3
@@ -78,7 +81,7 @@ export class RepositorioPropuestasPg implements PuertoRepositorioPropuestas {
           WHEN 'SIN DEMANDA' THEN 6
           ELSE 7
         END,
-        c.inversion_sugerida_usd DESC,
+        COALESCE(c.inversion_sugerida_usd, 0) DESC,
         ps.codigo_sku ASC;
     `;
     const resRenglones = await baseDeDatos.ejecutarConsulta(consultaRenglones, [identificadorProveedor]);
@@ -178,6 +181,7 @@ export class RepositorioPropuestasPg implements PuertoRepositorioPropuestas {
       totalInversionPropuestaUSD: Math.round(totalInversionAprobadaUSD * 100) / 100,
       esCalculoVigente: renglones.length > 0 ? renglones.every(r => r.esCalculoVigente) : true,
       numeroVersionPropuesta: renglones.length > 0 ? Math.max(...renglones.map(r => r.numeroVersion)) : 1,
+      sinCalculoOdoo: renglones.every(r => r.estadoDecision === 'SIN_CALCULO'),
       renglones
     };
   }

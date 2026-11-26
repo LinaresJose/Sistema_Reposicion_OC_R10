@@ -1,4 +1,4 @@
-export type EstadoDecisionCompra = 'PENDIENTE' | 'APROBADO' | 'EXCLUIDO';
+export type EstadoDecisionCompra = 'PENDIENTE' | 'APROBADO' | 'EXCLUIDO' | 'SIN_CALCULO';
 
 export interface DecisionCompraSKU {
   identificadorDecision: string;
@@ -88,5 +88,6 @@ export interface ResumenPropuestaProveedor {
   ordenCompraId?: string;
   estadoOrdenCompra?: string;
   numeroVersionPropuesta?: number;
+  sinCalculoOdoo?: boolean;
   renglones: RenglonPropuestaReposicion[];
 }
